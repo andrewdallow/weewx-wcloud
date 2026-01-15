@@ -100,6 +100,31 @@ except ImportError:
         logmsg(syslog.LOG_ERR, msg)
 
 
+def safe_db_query(dbm, sql, params, max_retries=3):
+    """Execute database query with retry logic for connection errors."""
+    import time
+    import pymysql
+
+    for attempt in range(max_retries):
+        try:
+            return dbm.getSql(sql, params)
+        except (pymysql.err.InterfaceError, pymysql.err.OperationalError) as e:
+            if attempt < max_retries - 1:
+                # Log the retry attempt
+                import syslog
+                syslog.syslog(syslog.LOG_WARNING,
+                              f"wcloud: Database connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                time.sleep(1)  # Wait before retry
+                # Force reconnection by getting a fresh connection
+                try:
+                    dbm.connection.ping(reconnect=True)
+                except:
+                    pass
+            else:
+                raise
+    return None
+
+
 # weewx uses a status of 1 to indicate failure, wcloud uses 0
 def _invert(x):
     if x is None:
@@ -129,11 +154,15 @@ def _calc_thw(heatindex_C, windspeed_mps):
     thw_C = (thw_F - 32) * 5 / 9
     return thw_C
 
-def _get_windavg(dbm, ts, interval=600):
-    sts = ts - interval
-    val = dbm.getSql("SELECT AVG(windSpeed) FROM %s "
-                     "WHERE dateTime>? AND dateTime<=?" % dbm.table_name,
-                     (sts, ts))
+def _get_windavg(dbm, ts):
+    """Get the average windspeed for the 10 minutes before timestamp ts."""
+    sts = ts - 600
+    # Use safe query instead of direct getSql
+    val = safe_db_query(
+        dbm,
+        "SELECT AVG(windSpeed) FROM %s WHERE dateTime>? AND dateTime<=?" % dbm.table_name,
+        (sts, ts)
+    )
     return val[0] if val is not None else None
 
 # weathercloud wants "10-min maximum gust of wind".  some hardware reports

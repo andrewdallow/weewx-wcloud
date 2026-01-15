@@ -5,7 +5,7 @@ Installation instructions:
 
 0) download
 
-wget -O weewx-wcloud.zip https://github.com/matthewwall/weewx-wcloud/archive/master.zip
+wget -O weewx-wcloud.zip https://github.com/andrewdallow/weewx-wcloud/archive/master.zip
 
 1) run the extension installer:
 
